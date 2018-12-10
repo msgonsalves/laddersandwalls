@@ -66,36 +66,49 @@ def create_complete_graph(pair_weights, flip_weights=True):
 
 def create_usable_network(a_graph):
     remove_nodes = []
+    edges_to_add = []
 
     for a_node in a_graph.nodes():
         d_in = a_graph.in_degree(a_node)
         d_out = a_graph.out_degree(a_node)
         if d_in > d_out:
             if d_out == 0:
-                neighbors = a_graph.neighbors(a_node)
-
-                for a_neighbor in neighbors:
-                    other_edge = a_graph.get_edge_data(a_neighbor, a_node)
-                    a_graph.add_edge(a_node, a_neighbor,
-                                     **{'length': other_edge[0]['length'] * 3, 'leaves': other_edge[0]['leaves']})
+                edges = a_graph.in_edges(nbunch=a_node, data=True)
+                print("one way out")
+                for an_edge in edges:
+                    # neighbor, _ = an_edge
+                    # other_edge = a_graph.get_edge_data(neighbor, a_node)
+                    # print(other_edge)
+                    edges_to_add.append([an_edge[1], an_edge[0], an_edge[2]['length'], an_edge[2]['leaves']])
+                    # a_graph.add_edge(an_edge[1], an_edge[0],
+                    #                  **{'length': an_edge[2]['length'] * 3, 'leaves': an_edge[2]['leaves']})
 
         if d_out > d_in:
             if d_in == 0:
-                neighbors = a_graph.neighbors(a_node)
-
-                for a_neighbor in neighbors:
-                    other_edge = a_graph.get_edge_data(a_node, a_neighbor)
-                    length = other_edge[0]['length']
+                edges = a_graph.out_edges(nbunch=a_node, data=True)
+                print("one way in")
+                for an_edge in edges:
+                    # neighbor, _ = an_edge
+                    #
+                    # other_edge = a_graph.get_edge_data(a_node, neighbor)
+                    # print(other_edge)
+                    length = an_edge[2]['length']
                     length = length * 3
-                    a_graph.add_edge(a_neighbor, a_node,
-                                     **{'length': length * 3, 'leaves': other_edge[0]['leaves']})
+                    edges_to_add.append([an_edge[1], an_edge[0], an_edge[2]['length'], an_edge[2]['leaves']])
+                    # a_graph.add_edge(an_edge[0], an_edge[1],
+                    #                  **{'length': length, 'leaves': an_edge[2]['leaves']})
 
-        if len(list(a_graph.neighbors(a_node))) == 0:
+        if d_out == 0 and d_in == 0:
+            print("adding node: ", a_node, " to remove")
             remove_nodes.append(a_node)
+
+    for e in edges_to_add:
+        a_graph.add_edge(e[0], e[1], **{'length': e[2], 'leaves': e[3]})
 
     for a_node in remove_nodes:
         a_graph.remove_node(a_node)
 
+    print("finsihed graph")
     return a_graph
 
 
@@ -253,13 +266,13 @@ def main():
     tour = nx.eulerian_circuit(G, dump1)
     test = G.to_undirected()
     print(nx.is_connected(test))
-    G = nx.make_max_clique_graph(G)
-    G = create_usable_network(G)
-    G = create_usable_network(G)
-    G = create_usable_network(G)
-    G = create_usable_network(G)
 
     H = G.to_directed()
+
+    H = create_usable_network(H)
+    H = create_usable_network(H)
+    # H = create_usable_network(H)
+    # H = create_usable_network(H)
 
     a = chinese_postman(H, dump1)
 
