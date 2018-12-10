@@ -63,6 +63,7 @@ def chinese_postman(a_graph):
 
     nodes_more_in_degree = []
     nodes_more_out_degree = []
+
     for a_node in a_graph.nodes():
         d_in = a_graph.in_degree(a_node)
         d_out = a_graph.out_degree(a_node)
