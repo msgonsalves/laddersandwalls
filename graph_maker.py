@@ -14,52 +14,52 @@ class Truck:
         self.__capacity_left = 30
         self.__path = []
 
-    def drive_path(self, path, dump1, dump2, dump3, graph):
+    def drive_path(self, path, last_dump, dump1, dump2, dump3,  graph):
 
         start_node = path[0][0]
-        dump1_pathl = nx.dijkstra_path_length(graph, start_node, dump1)
-        dump2_pathl = nx.dijkstra_path_length(graph, start_node, dump2)
-        dump3_pathl = nx.dijkstra_path_length(graph, start_node, dump3)
+        start_path = nx.dijkstra_path(graph, last_dump, start_node)
 
-        path = []
-        if dump1_pathl < dump2_pathl:
-            if dump1_pathl < dump3_pathl:
-                path = nx.dijkstra_path(graph, start_node, dump1)
-            elif dump3_pathl < dump2_pathl:
-                path = nx.dijkstra_path(graph, start_node, dump3)
-        else:
-            if dump2_pathl < dump3_pathl:
-                path = nx.dijkstra_path(graph, start_node, dump2)
 
-        for a_node in path:
+        for a_node in start_path:
             self.__path.append(a_node)
 
         removed_edges = []
+        print(len(self.__path))
         for an_edge in path:
-            self.__capacity_left -= an_edge[2]['leaves']
-            an_edge[2]['leaves'] = 0
+            edge_data = graph.get_edge_data(an_edge[0], an_edge[1])
+            self.__capacity_left -= edge_data[0]['leaves']
+            if self.__capacity_left < 0:
+                self.__capacity_left += edge_data[0]['leaves']
+                break
+            edge_data[0]['leaves'] = 0
             self.__path.append(an_edge[1])
             removed_edges.append(an_edge)
 
-        dump1_pathl = nx.dijkstra_path_length(graph, dump1, start_node)
-        dump2_pathl = nx.dijkstra_path_length(graph, dump2, start_node)
-        dump3_pathl = nx.dijkstra_path_length(graph, dump3, start_node)
+        dump1_pathl = nx.dijkstra_path_length(graph, self.__path[-1], dump1)
+        dump2_pathl = nx.dijkstra_path_length(graph, self.__path[-1], dump2)
+        dump3_pathl = nx.dijkstra_path_length(graph, self.__path[-1], dump3)
 
-        path = []
+        end_path = []
+        print(len(self.__path))
+        end_node = 0
         if dump1_pathl < dump2_pathl:
             if dump1_pathl < dump3_pathl:
-                path = nx.dijkstra_path(graph, dump1, start_node)
+                end_path = nx.dijkstra_path(graph, self.__path[-1], dump1)
+                end_node = dump1
             elif dump3_pathl < dump2_pathl:
-                path = nx.dijkstra_path(graph, dump3, start_node)
+                end_path = nx.dijkstra_path(graph, self.__path[-1], dump3)
+                end_node = dump3
         else:
             if dump2_pathl < dump3_pathl:
-                path = nx.dijkstra_path(graph, dump2, start_node)
-
-        for a_node in path[1:]:
+                end_path = nx.dijkstra_path(graph, self.__path[-1], dump2)
+                end_node = dump2
+        for a_node in end_path[1:]:
             self.__path.append(a_node)
 
         for an_edge in removed_edges:
             path.remove(an_edge)
+
+        return self.__path, end_node
 
 
 # function for adding weights to edges
@@ -211,7 +211,7 @@ def create_eulerian_circuit(graph_augmented, graph_original, starting_node=None)
             edge_att = graph_original[edge[0]][edge[1]]
             euler_circuit.append((edge[0], edge[1], edge_att))
         else:
-            aug_path = nx.shortest_path(graph_original, edge[0], edge[1], weight='distance')
+            aug_path = nx.dijkstra_path(graph_original, edge[0], edge[1], weight='length')
             aug_path_pairs = list(zip(aug_path[:-1], aug_path[1:]))
 
             # print('Filling in edges for augmented edge: {}'.format(edge))
@@ -220,9 +220,15 @@ def create_eulerian_circuit(graph_augmented, graph_original, starting_node=None)
 
             # If `edge` does not exist in original graph, find the shortest path between its nodes and
             #  add the edge attributes for each link in the shortest path.
-            for edge_aug in aug_path_pairs:
-                edge_aug_att = graph_original[edge_aug[0]][edge_aug[1]]
-                euler_circuit.append((edge_aug[0], edge_aug[1], edge_aug_att))
+            test_edges = graph_original.edges(aug_path, data=True)
+
+
+            for i in range(0, len(aug_path)-1):
+                edge_aug_att = graph_original.get_edge_data(aug_path[i], aug_path[i+1])
+                euler_circuit.append((aug_path[i], aug_path[i+1], edge_aug_att))
+            # for edge_aug in aug_path_pairs:
+            #     edge_aug_att = graph_original[edge_aug[0]][edge_aug[1]]
+            #     euler_circuit.append((edge_aug[0], edge_aug[1], edge_aug_att))
 
     return euler_circuit
 
@@ -364,13 +370,12 @@ def main():
     nx.write_gpickle(a, "eularian_circuit_graph.gpickle")
     euler_circuit = create_eulerian_circuit(a, H, dump1)
     total_mileage_of_circuit = 0
-    # for edge in euler_circuit:
-    #     try:
-    #         total_mileage_of_circuit += edge[2]['length']
-    #     except:
-    #         print(edge)
+    for edge in euler_circuit:
 
-    total_mileage_on_orig_trail_map = sum(nx.get_edge_attributes(a, 'length').values())
+        edge_data = H.get_edge_data(edge[0], edge[1])
+        total_mileage_of_circuit += edge_data[0]['length']
+
+    total_mileage_on_orig_trail_map = sum(nx.get_edge_attributes(H, 'length').values())
     _vcn = pd.value_counts(pd.value_counts([(e[0]) for e in euler_circuit]), sort=False)
     node_visits = pd.DataFrame({'n_visits': _vcn.index, 'n_nodes': _vcn.values})
     _vce = pd.value_counts(
@@ -396,6 +401,46 @@ def main():
     print('\nNumber of times visiting each edge:')
     print(edge_visits.to_string(index=False))
     # ox.plot_graph_routes(H, routes)
+
+    euler_circuit_copy = []
+
+    for an_edge in euler_circuit:
+        euler_circuit_copy.append((an_edge))
+
+    trucks = []
+    paths = []
+    last_node = dump1
+    while euler_circuit_copy:
+        temp_truck = Truck()
+
+        temp_path, last_node = temp_truck.drive_path(euler_circuit_copy, last_node, dump1, dump2, dump3, H)
+
+        trucks.append(temp_truck)
+        paths.append(temp_path)
+        for i in range(0, len(temp_path)-1):
+            if temp_path[i] == temp_path[i+1]:
+                print(temp_path[i])
+                print(i)
+            try:
+                data = min(H.get_edge_data(temp_path[i], temp_path[i+1]).values(), key=lambda x: x['length'])
+            except:
+                try_path = nx.dijkstra_path(H, temp_path[i], temp_path[i+1])
+                print(try_path)
+                print(temp_path[i])
+                print(temp_path[i+1])
+                print(i)
+
+        edges = H.edges(temp_path, data=True)
+
+        for e in edges:
+
+            if not type(e):
+                print(e)
+
+        ox.plot_graph_route(H, temp_path)
+
+
+
 
 
 if __name__ == "__main__":
