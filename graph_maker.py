@@ -69,7 +69,7 @@ def add_leaf_weight(a_graph):
         _, _, temp_data = edge
         temp_highway = temp_data['highway']
         if temp_highway == 'residential':
-            temp_data['leaves'] = temp_data['length'] / 10
+            temp_data['leaves'] = temp_data['length'] / 25
         else:
             temp_data['leaves'] = 0
         temp_data['trail'] = 'original'
@@ -437,7 +437,8 @@ def main():
             if not type(e):
                 print(e)
 
-        ox.plot_graph_route(H, temp_path)
+    for a_path in paths:
+        ox.plot_graph_route(H, a_path)
 
 
 
