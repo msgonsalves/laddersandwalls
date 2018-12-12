@@ -8,6 +8,60 @@ ox.config(use_cache=True, log_console=True)
 ox.__version__
 
 
+class Truck:
+
+    def __init__(self):
+        self.__capacity_left = 30
+        self.__path = []
+
+    def drive_path(self, path, dump1, dump2, dump3, graph):
+
+        start_node = path[0][0]
+        dump1_pathl = nx.dijkstra_path_length(graph, start_node, dump1)
+        dump2_pathl = nx.dijkstra_path_length(graph, start_node, dump2)
+        dump3_pathl = nx.dijkstra_path_length(graph, start_node, dump3)
+
+        path = []
+        if dump1_pathl < dump2_pathl:
+            if dump1_pathl < dump3_pathl:
+                path = nx.dijkstra_path(graph, start_node, dump1)
+            elif dump3_pathl < dump2_pathl:
+                path = nx.dijkstra_path(graph, start_node, dump3)
+        else:
+            if dump2_pathl < dump3_pathl:
+                path = nx.dijkstra_path(graph, start_node, dump2)
+
+        for a_node in path:
+            self.__path.append(a_node)
+
+        removed_edges = []
+        for an_edge in path:
+            self.__capacity_left -= an_edge[2]['leaves']
+            an_edge[2]['leaves'] = 0
+            self.__path.append(an_edge[1])
+            removed_edges.append(an_edge)
+
+        dump1_pathl = nx.dijkstra_path_length(graph, dump1, start_node)
+        dump2_pathl = nx.dijkstra_path_length(graph, dump2, start_node)
+        dump3_pathl = nx.dijkstra_path_length(graph, dump3, start_node)
+
+        path = []
+        if dump1_pathl < dump2_pathl:
+            if dump1_pathl < dump3_pathl:
+                path = nx.dijkstra_path(graph, dump1, start_node)
+            elif dump3_pathl < dump2_pathl:
+                path = nx.dijkstra_path(graph, dump3, start_node)
+        else:
+            if dump2_pathl < dump3_pathl:
+                path = nx.dijkstra_path(graph, dump2, start_node)
+
+        for a_node in path[1:]:
+            self.__path.append(a_node)
+
+        for an_edge in removed_edges:
+            path.remove(an_edge)
+
+
 # function for adding weights to edges
 # needs some work for good estimations but should be good for now
 def add_leaf_weight(a_graph):
@@ -18,6 +72,7 @@ def add_leaf_weight(a_graph):
             temp_data['leaves'] = temp_data['length'] / 10
         else:
             temp_data['leaves'] = 0
+        temp_data['trail'] = 'original'
     return a_graph
 
 
@@ -33,12 +88,25 @@ def get_shortest_paths_distances(graph, pairs, edge_weight_name):
     i = 0
     j = 0
     for pair in pairs:
-        try:
-            shortest_path = nx.shortest_path(graph, pair[0], pair[1])
+
+        # print("degree in/out one: ", graph.in_degree(pair[0]), " / ", graph.out_degree(pair[0]))
+        # print("degree in/out two: ", graph.in_degree(pair[1]), " / ", graph.out_degree(pair[1]))
+        node1 = graph.nodes(pair[0])
+        node2 = graph.nodes(pair[1])
+
+        d1_in = graph.in_degree(pair[0])
+        d1_out = graph.out_degree(pair[0])
+        d2_in = graph.in_degree(pair[1])
+        d2_out = graph.out_degree(pair[1])
+
+        if d1_in < d1_out or d2_in > d2_out:
+            if d1_in < d1_out:
+                print("node1 in/out: ", d1_in, " / ", d1_out)
+            else:
+                print("node2 in/out: ", d2_in, " / ", d2_out)
+        else:
             path = nx.dijkstra_path_length(graph, pair[0], pair[1], weight=edge_weight_name)
             distances[pair] = path
-        except:
-            j += 1
 
         if i % 1000 == 0:
             print(i)
@@ -60,7 +128,7 @@ def create_complete_graph(pair_weights, flip_weights=True):
     for k, v in pair_weights.items():
         weight = - v if flip_weights else v
         # g.add_edge(k[0], k[1], {'distance': v, 'weight': wt_i})  # deprecated after NX 1.11
-        g.add_edge(k[0], k[1], **{'distance': v, 'weight': weight})
+        g.add_edge(k[0], k[1], **{'length': v, 'weight': weight})
     return g
 
 
@@ -76,34 +144,23 @@ def create_usable_network(a_graph):
                 edges = a_graph.in_edges(nbunch=a_node, data=True)
                 print("one way out")
                 for an_edge in edges:
-                    # neighbor, _ = an_edge
-                    # other_edge = a_graph.get_edge_data(neighbor, a_node)
-                    # print(other_edge)
-                    edges_to_add.append([an_edge[1], an_edge[0], an_edge[2]['length'], an_edge[2]['leaves']])
-                    # a_graph.add_edge(an_edge[1], an_edge[0],
-                    #                  **{'length': an_edge[2]['length'] * 3, 'leaves': an_edge[2]['leaves']})
+                    edges_to_add.append([an_edge[1], an_edge[0], an_edge[2]['length'], an_edge[2]['leaves'], an_edge[2]['trail']])
 
         if d_out > d_in:
             if d_in == 0:
                 edges = a_graph.out_edges(nbunch=a_node, data=True)
                 print("one way in")
                 for an_edge in edges:
-                    # neighbor, _ = an_edge
-                    #
-                    # other_edge = a_graph.get_edge_data(a_node, neighbor)
-                    # print(other_edge)
                     length = an_edge[2]['length']
                     length = length * 3
-                    edges_to_add.append([an_edge[1], an_edge[0], an_edge[2]['length'], an_edge[2]['leaves']])
-                    # a_graph.add_edge(an_edge[0], an_edge[1],
-                    #                  **{'length': length, 'leaves': an_edge[2]['leaves']})
+                    edges_to_add.append([an_edge[1], an_edge[0], an_edge[2]['length'], an_edge[2]['leaves'], an_edge[2]['trail']])
 
         if d_out == 0 and d_in == 0:
             print("adding node: ", a_node, " to remove")
             remove_nodes.append(a_node)
 
     for e in edges_to_add:
-        a_graph.add_edge(e[0], e[1], **{'length': e[2], 'leaves': e[3]})
+        a_graph.add_edge(e[0], e[1], **{'length': e[2], 'leaves': e[3], 'trail': e[4]})
 
     for a_node in remove_nodes:
         a_graph.remove_node(a_node)
@@ -113,11 +170,31 @@ def create_usable_network(a_graph):
 
 
 def make_aug_graph(a_graph, a_matching):
-    graph_aug = nx.DiGraph(a_graph.copy())
+    graph_aug = nx.MultiDiGraph(a_graph.copy())
 
     for a_pair in a_matching:
+        # print("adding edge: ", a_pair)
+        one_in = graph_aug.in_degree(a_pair[0])
+        one_out = graph_aug.out_degree(a_pair[0])
+        two_in = graph_aug.in_degree(a_pair[1])
+        two_out = graph_aug.out_degree(a_pair[1])
+        # print("vertex one in/out: ", one_in, "/", one_out)
+        # print("vertex two in/out: ", two_in, "/", two_out)
         graph_aug.add_edge(a_pair[0], a_pair[1],
-                           **{'distance': nx.dijkstra_path_length(a_graph, a_pair[0], a_pair[1]), 'trail': 'augmented'})
+                           **{'length': nx.dijkstra_path_length(a_graph, a_pair[0], a_pair[1]), 'trail': 'augmented'})
+
+        one_in = graph_aug.in_degree(a_pair[0])
+        one_out = graph_aug.out_degree(a_pair[0])
+        two_in = graph_aug.in_degree(a_pair[1])
+        two_out = graph_aug.out_degree(a_pair[1])
+        if one_in != one_out:
+
+            print("vertex one in/out: ", one_in, "/", one_out)
+            print("vertex two in/out: ", two_in, "/", two_out)
+
+        if two_in != two_out:
+            print("vertex one in/out: ", one_in, "/", one_out)
+            print("vertex two in/out: ", two_in, "/", two_out)
 
     return graph_aug
 
@@ -129,7 +206,6 @@ def create_eulerian_circuit(graph_augmented, graph_original, starting_node=None)
 
     for edge in naive_circuit:
         edge_data = graph_augmented.get_edge_data(edge[0], edge[1])
-
         if edge_data[0]['trail'] != 'augmented':
             # If `edge` exists in original graph, grab the edge attributes and add to eulerian circuit.
             edge_att = graph_original[edge[0]][edge[1]]
@@ -138,9 +214,9 @@ def create_eulerian_circuit(graph_augmented, graph_original, starting_node=None)
             aug_path = nx.shortest_path(graph_original, edge[0], edge[1], weight='distance')
             aug_path_pairs = list(zip(aug_path[:-1], aug_path[1:]))
 
-            print('Filling in edges for augmented edge: {}'.format(edge))
-            print('Augmenting path: {}'.format(' => '.join(aug_path)))
-            print('Augmenting path pairs: {}\n'.format(aug_path_pairs))
+            # print('Filling in edges for augmented edge: {}'.format(edge))
+            # print('Augmenting path: {}'.format(' => '.join(aug_path)))
+            # print('Augmenting path pairs: {}\n'.format(aug_path_pairs))
 
             # If `edge` does not exist in original graph, find the shortest path between its nodes and
             #  add the edge attributes for each link in the shortest path.
@@ -149,6 +225,24 @@ def create_eulerian_circuit(graph_augmented, graph_original, starting_node=None)
                 euler_circuit.append((edge_aug[0], edge_aug[1], edge_aug_att))
 
     return euler_circuit
+
+
+def check_matchin(matching, more_out, more_in):
+    length = 0
+    new_matching = []
+    for a_pair in matching:
+        length += 1
+
+        if a_pair[0] not in more_out:
+            new_matching.append((a_pair[1], a_pair[0]))
+            # print("some node set was backwards")
+
+        else:
+            new_matching.append(a_pair)
+
+
+    print("length of matching: ", len(matching))
+    return new_matching
 
 
 def chinese_postman(a_graph, start_node):
@@ -165,6 +259,7 @@ def chinese_postman(a_graph, start_node):
                 print()
             num_less = d_in - d_out
             for i in range(0, num_less):
+                print("degree in/out: ", d_in, " / ", d_out)
                 nodes_more_in_degree.append(a_node)
 
         if d_out > d_in:
@@ -174,6 +269,7 @@ def chinese_postman(a_graph, start_node):
                 print()
 
             for i in range(0, num_less):
+                print("degree in/out: ", d_in, " / ", d_out)
                 nodes_more_out_degree.append(a_node)
 
     print("length of in nodes: ", len(nodes_more_in_degree))
@@ -183,14 +279,16 @@ def chinese_postman(a_graph, start_node):
         for b_node in nodes_more_out_degree:
             odd_node_pairs.append((a_node, b_node))
 
-    odd_node_pairs_shortest_paths = get_shortest_paths_distances(a_graph, odd_node_pairs, 'distance')
+    odd_node_pairs_shortest_paths = get_shortest_paths_distances(a_graph, odd_node_pairs, 'length')
     sub_graph = create_complete_graph(odd_node_pairs_shortest_paths, flip_weights=True)
 
     print("starting matching")
     odd_matching_dupes = nx.algorithms.max_weight_matching(sub_graph, True)
-
+    print(odd_matching_dupes)
+    new_matching = check_matchin(odd_matching_dupes, nodes_more_in_degree, nodes_more_out_degree)
+    # print(new_matching)
     print("making the augmented graph")
-    aug_graph = make_aug_graph(a_graph, odd_matching_dupes)
+    aug_graph = make_aug_graph(a_graph, new_matching)
 
     second_in = []
     second_out = []
@@ -212,38 +310,10 @@ def chinese_postman(a_graph, start_node):
     print("length of in nodes: ", len(second_in))
     print("length of out nodes: ", len(second_out))
 
-    # euler_circuit = create_eulerian_circuit(aug_graph, a_graph, start_node)
-
     print("total number of odd degree pairs: ", len(odd_node_pairs))
 
-    # total_mileage_of_circuit = sum([edge[2]['distance'] for edge in euler_circuit])
-    # total_mileage_on_orig_trail_map = sum(nx.get_edge_attributes(a_graph, 'distance').values())
-    # _vcn = pd.value_counts(pd.value_counts([(e[0]) for e in euler_circuit]), sort=False)
-    # node_visits = pd.DataFrame({'n_visits': _vcn.index, 'n_nodes': _vcn.values})
-    # _vce = pd.value_counts(
-    #     pd.value_counts([sorted(e)[0] + sorted(e)[1] for e in nx.MultiDiGraph(euler_circuit).edges()]))
-    # edge_visits = pd.DataFrame({'n_visits': _vce.index, 'n_edges': _vce.values})
-    #
-    # # Printing stats
-    # print('Mileage of circuit: {0:.2f}'.format(total_mileage_of_circuit))
-    # print('Mileage on original trail map: {0:.2f}'.format(total_mileage_on_orig_trail_map))
-    # print('Mileage retracing edges: {0:.2f}'.format(total_mileage_of_circuit - total_mileage_on_orig_trail_map))
-    # print('Percent of mileage retraced: {0:.2f}%\n'.format(
-    #     (1 - total_mileage_of_circuit / total_mileage_on_orig_trail_map) * -100))
-    #
-    # print('Number of edges in circuit: {}'.format(len(euler_circuit)))
-    # print('Number of edges in original graph: {}'.format(len(a_graph.edges())))
-    # print('Number of nodes in original graph: {}\n'.format(len(a_graph.nodes())))
-    #
-    # print('Number of edges traversed more than once: {}\n'.format(len(euler_circuit) - len(g.edges())))
-    #
-    # print('Number of times visiting each node:')
-    # print(node_visits.to_string(index=False))
-    #
-    # print('\nNumber of times visiting each edge:')
-    # print(edge_visits.to_string(index=False))
 
-
+    return aug_graph
 def main():
     G = ox.graph_from_place('Worcester, Massachusetts', network_type='drive_service')
     # fig, ax = ox.plot_graph(G, fig_height=8, node_size=0, edge_linewidth=0.5)
@@ -267,15 +337,64 @@ def main():
     test = G.to_undirected()
     print(nx.is_connected(test))
 
-    H = G.to_directed()
+    H = nx.DiGraph(G)
 
-    H = create_usable_network(H)
-    H = create_usable_network(H)
-    # H = create_usable_network(H)
-    # H = create_usable_network(H)
+    H = create_usable_network(G)
 
-    a = chinese_postman(H, dump1)
+    test = H.to_undirected()
+    print(nx.is_connected(test))
+    print(nx.is_strongly_connected(G))
+    subgraphs = nx.strongly_connected_component_subgraphs(H)
+    print(subgraphs)
 
+    max = 0
+    largest_graph = 0
+    for sub in subgraphs:
+        print("a")
+        print(len(sub.nodes()))
+        if len(sub.nodes()) > max:
+            largest_graph = sub
+            max = len(sub.nodes())
+
+    print(len(largest_graph.nodes()))
+
+    # a = chinese_postman(largest_graph, dump1)
+    # a = chinese_postman(a, dump1)
+    a = nx.read_gpickle("eularian_circuit_graph.gpickle")
+    nx.write_gpickle(a, "eularian_circuit_graph.gpickle")
+    euler_circuit = create_eulerian_circuit(a, H, dump1)
+    total_mileage_of_circuit = 0
+    # for edge in euler_circuit:
+    #     try:
+    #         total_mileage_of_circuit += edge[2]['length']
+    #     except:
+    #         print(edge)
+
+    total_mileage_on_orig_trail_map = sum(nx.get_edge_attributes(a, 'length').values())
+    _vcn = pd.value_counts(pd.value_counts([(e[0]) for e in euler_circuit]), sort=False)
+    node_visits = pd.DataFrame({'n_visits': _vcn.index, 'n_nodes': _vcn.values})
+    _vce = pd.value_counts(
+        pd.value_counts([sorted(e)[0] + sorted(e)[1] for e in nx.MultiDiGraph(euler_circuit).edges()]))
+    edge_visits = pd.DataFrame({'n_visits': _vce.index, 'n_edges': _vce.values})
+
+    # Printing stats
+    print('Mileage of circuit: {0:.2f}'.format(total_mileage_of_circuit))
+    print('Mileage on original trail map: {0:.2f}'.format(total_mileage_on_orig_trail_map))
+    print('Mileage retracing edges: {0:.2f}'.format(total_mileage_of_circuit - total_mileage_on_orig_trail_map))
+    print('Percent of mileage retraced: {0:.2f}%\n'.format(
+        (1 - total_mileage_of_circuit / total_mileage_on_orig_trail_map) * -100))
+
+    print('Number of edges in circuit: {}'.format(len(euler_circuit)))
+    print('Number of edges in original graph: {}'.format(len(a.edges())))
+    print('Number of nodes in original graph: {}\n'.format(len(a.nodes())))
+
+    print('Number of edges traversed more than once: {}\n'.format(len(euler_circuit) - len(a.edges())))
+
+    print('Number of times visiting each node:')
+    print(node_visits.to_string(index=False))
+
+    print('\nNumber of times visiting each edge:')
+    print(edge_visits.to_string(index=False))
     # ox.plot_graph_routes(H, routes)
 
 
